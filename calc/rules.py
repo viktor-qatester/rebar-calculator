@@ -14,3 +14,8 @@ def calc_bars_per_belt(width_cm: float) -> int:
     if width_cm <= 60:
         return 3
     return 4
+
+
+def calc_bars_per_pile(_pile_diameter_mm: int) -> int:
+    """Упрощённо: вертикальных прутков в одной свае (по проекту обычно 4)."""
+    return 4

@@ -1,3 +1,1 @@
-from calc.strip import calculate_strip
-
-__all__ = ["calculate_strip"]
+"""Расчётные модули калькулятора арматуры."""
