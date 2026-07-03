@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
+from starlette.routing import Route
 from telegram import Update
 from telegram.ext import Application
 
@@ -53,7 +55,8 @@ async def telegram_webhook(request: Request) -> Response:
     return Response()
 
 
-async def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(_: Starlette):
     global ptb_app
 
     from bot.app_factory import create_application
@@ -70,30 +73,29 @@ async def on_startup() -> None:
         os.getenv("WEBHOOK_URL", "").strip()
         or os.getenv("RENDER_EXTERNAL_URL", "").strip()
     ).rstrip("/")
-    if not webhook_base:
+    if webhook_base:
+        webhook_url = f"{webhook_base}/webhook"
+        await ptb_app.bot.set_webhook(
+            url=webhook_url,
+            allowed_updates=["message"],
+            drop_pending_updates=True,
+        )
+        logger.info("Webhook установлен: %s", webhook_url)
+    else:
         logger.error("Нет WEBHOOK_URL и RENDER_EXTERNAL_URL")
-        return
 
-    webhook_url = f"{webhook_base}/webhook"
-    await ptb_app.bot.set_webhook(
-        url=webhook_url,
-        allowed_updates=["message"],
-        drop_pending_updates=True,
-    )
-    logger.info("Webhook установлен: %s", webhook_url)
+    yield
 
-
-async def on_shutdown() -> None:
-    if ptb_app is None:
-        return
-    await ptb_app.stop()
-    await ptb_app.shutdown()
+    if ptb_app is not None:
+        await ptb_app.stop()
+        await ptb_app.shutdown()
 
 
 app = Starlette(
-    on_startup=[on_startup],
-    on_shutdown=[on_shutdown],
+    lifespan=lifespan,
+    routes=[
+        Route("/", health, methods=["GET"]),
+        Route("/health", health, methods=["GET"]),
+        Route("/webhook", telegram_webhook, methods=["POST"]),
+    ],
 )
-app.add_route("/", health, methods=["GET"])
-app.add_route("/health", health, methods=["GET"])
-app.add_route("/webhook", telegram_webhook, methods=["POST"])
