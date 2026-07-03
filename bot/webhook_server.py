@@ -11,14 +11,15 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from telegram import Update
-
-from bot.app_factory import create_application
+from telegram.ext import Application
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+ptb_app: Application | None = None
 
 
 def load_env() -> None:
@@ -37,7 +38,6 @@ def load_env() -> None:
 
 
 load_env()
-ptb_app = create_application()
 
 
 async def health(_: Request) -> PlainTextResponse:
@@ -45,6 +45,8 @@ async def health(_: Request) -> PlainTextResponse:
 
 
 async def telegram_webhook(request: Request) -> Response:
+    if ptb_app is None:
+        return Response(status_code=503)
     data = await request.json()
     update = Update.de_json(data, ptb_app.bot)
     await ptb_app.process_update(update)
@@ -52,18 +54,24 @@ async def telegram_webhook(request: Request) -> Response:
 
 
 async def on_startup() -> None:
-    await ptb_app.initialize()
-    await ptb_app.start()
+    global ptb_app
+
+    from bot.app_factory import create_application
+
+    try:
+        ptb_app = create_application()
+        await ptb_app.initialize()
+        await ptb_app.start()
+    except Exception:
+        logger.exception("Не удалось запустить Telegram-приложение")
+        raise
 
     webhook_base = (
         os.getenv("WEBHOOK_URL", "").strip()
         or os.getenv("RENDER_EXTERNAL_URL", "").strip()
     ).rstrip("/")
     if not webhook_base:
-        logger.error(
-            "Не задан WEBHOOK_URL и нет RENDER_EXTERNAL_URL. "
-            "На Render URL подставится сам; локально укажите WEBHOOK_URL."
-        )
+        logger.error("Нет WEBHOOK_URL и RENDER_EXTERNAL_URL")
         return
 
     webhook_url = f"{webhook_base}/webhook"
@@ -76,6 +84,8 @@ async def on_startup() -> None:
 
 
 async def on_shutdown() -> None:
+    if ptb_app is None:
+        return
     await ptb_app.stop()
     await ptb_app.shutdown()
 
