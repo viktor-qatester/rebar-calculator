@@ -1,4 +1,4 @@
-"""Точка входа Telegram-бота."""
+"""Точка входа Telegram-бота (локально, polling)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,8 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from telegram.ext import Application
-from telegram.request import HTTPXRequest
 
-from bot.handlers import register_handlers
+from bot.app_factory import create_application
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -24,22 +22,24 @@ def main() -> None:
     project_root = Path(__file__).resolve().parent.parent
     load_dotenv(project_root / ".env")
 
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    if not token:
+    for key in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        os.environ.pop(key, None)
+
+    try:
+        app = create_application()
+    except ValueError:
         logger.error("TELEGRAM_BOT_TOKEN не задан. Добавьте токен в файл .env")
         sys.exit(1)
 
-    http_kwargs = {"trust_env": False}
-    app = (
-        Application.builder()
-        .token(token)
-        .request(HTTPXRequest(proxy=None, httpx_kwargs=http_kwargs))
-        .get_updates_request(HTTPXRequest(proxy=None, httpx_kwargs=http_kwargs))
-        .build()
-    )
-    register_handlers(app)
-
-    logger.info("Бот запущен. Остановка: Ctrl+C")
+    logger.info("Бот запущен (polling). Остановка: Ctrl+C")
+    logger.warning("Если бот уже в облаке — не запускайте polling одновременно!")
     app.run_polling(allowed_updates=["message"])
 
 

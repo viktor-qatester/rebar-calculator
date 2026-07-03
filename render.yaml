@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: rebar-calculator-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-bot.txt
+    startCommand: python run_webhook.py
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
